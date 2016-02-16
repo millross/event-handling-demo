@@ -41,17 +41,13 @@ public class EventProcessor {
         final EventProcessor processor = this;
         methods.stream().filter(m -> m.getName().equals("handle"))
                 .filter(m -> m.getParameterTypes()[0] != Event.class)
-                .forEach(m -> processors.put(m.getParameterTypes()[0], new Consumer<Event>() {
-
-                    @Override
-                    public void accept(final Event event) {
-                        try {
-                            m.invoke(processor, event);
-                        } catch (IllegalAccessException e) {
-                            e.printStackTrace();
-                        } catch (InvocationTargetException e) {
-                            e.printStackTrace();
-                        }
+                .forEach(m -> processors.put(m.getParameterTypes()[0], (Consumer<Event>) event -> {
+                    try {
+                        m.invoke(processor, event);
+                    } catch (IllegalAccessException e) {
+                        e.printStackTrace();
+                    } catch (InvocationTargetException e) {
+                        e.printStackTrace();
                     }
                 }));
     }
