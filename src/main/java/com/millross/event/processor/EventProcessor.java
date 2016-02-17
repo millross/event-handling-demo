@@ -15,17 +15,18 @@
  */
 package com.millross.event.processor;
 
-import com.millross.event.Event;
-import com.millross.event.EventOne;
-import com.millross.event.EventTwo;
-
-import java.lang.reflect.InvocationTargetException;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
+
+import com.millross.event.Event;
+import com.millross.event.EventOne;
+import com.millross.event.EventTwo;
 
 /**
  * @author Jeremy Prime
@@ -33,23 +34,15 @@ import java.util.function.Consumer;
  */
 public class EventProcessor {
 
-    private Map<Class, Consumer<Event>> processors = new HashMap<>();
+    private final Map<Class, MethodHandle> methodHandles = new HashMap<>();
 
     public EventProcessor() {
         final Method[] declaredMethods = EventProcessor.class.getDeclaredMethods();
         final List<Method> methods = Arrays.asList(declaredMethods);
-        final EventProcessor processor = this;
         methods.stream().filter(m -> m.getName().equals("handle"))
                 .filter(m -> m.getParameterTypes()[0] != Event.class)
-                .forEach(m -> processors.put(m.getParameterTypes()[0], (Consumer<Event>) event -> {
-                    try {
-                        m.invoke(processor, event);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    } catch (InvocationTargetException e) {
-                        e.printStackTrace();
-                    }
-                }));
+                .map(m -> new HandlerMethodMapping(m.getParameterTypes()[0], getMethodHandle(m)))
+                .forEach(mapping -> methodHandles.put(mapping.clazz, mapping.methodHandle));
     }
 
     public void handle(final EventOne event) {
@@ -61,10 +54,37 @@ public class EventProcessor {
     }
 
     public void handle(final Event event) {
-        if (processors.containsKey(event.getClass())) {
-            processors.get(event.getClass()).accept(event);
+        if (methodHandles.containsKey(event.getClass())) {
+            try {
+                methodHandles.get(event.getClass()).invoke(this, event);
+            } catch (Throwable throwable) {
+                throwable.printStackTrace();
+            }
         } else {
             System.out.println("Handler not found for " + event.getClass().getCanonicalName());
+        }
+    }
+
+    private static final MethodHandle getMethodHandle(final Method method) {
+        try {
+            return  MethodHandles.lookup().findVirtual(
+                    EventProcessor.class,
+                    method.getName(),
+                    MethodType.methodType(void.class, method.getParameterTypes()[0]));
+        } catch (NoSuchMethodException|IllegalAccessException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
+        }
+    }
+
+    private static class HandlerMethodMapping<T extends Event> {
+
+        private final Class<T> clazz;
+        private final MethodHandle methodHandle;
+
+        private HandlerMethodMapping(final Class<T> c, final MethodHandle method) {
+            this.clazz = c;
+            this.methodHandle = method;
         }
     }
 
