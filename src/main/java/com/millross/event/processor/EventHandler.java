@@ -15,42 +15,31 @@
  */
 package com.millross.event.processor;
 
+import com.millross.event.Event;
+
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.millross.event.Event;
-import com.millross.event.EventOne;
-import com.millross.event.EventTwo;
-
-/**
- * @author Jeremy Prime
- * @since 1.0.0
- */
-public class EventProcessor {
+public abstract class EventHandler<T> {
 
     private final Map<Class, MethodHandle> methodHandles = new HashMap<>();
 
-    public EventProcessor() {
-        final Method[] declaredMethods = EventProcessor.class.getDeclaredMethods();
+    protected EventHandler() {
+
+        final Method[] declaredMethods = getGenericTypeClass().getDeclaredMethods();
+
         final List<Method> methods = Arrays.asList(declaredMethods);
         methods.stream().filter(m -> m.getName().equals("handle"))
                 .filter(m -> m.getParameterTypes()[0] != Event.class)
                 .map(m -> new HandlerMethodMapping(m.getParameterTypes()[0], getMethodHandle(m)))
                 .forEach(mapping -> methodHandles.put(mapping.clazz, mapping.methodHandle));
-    }
-
-    public void handle(final EventOne event) {
-        event.sayHello();
-    }
-
-    public void handle(final EventTwo event) {
-        event.sayHi();
     }
 
     public void handle(final Event event) {
@@ -65,10 +54,21 @@ public class EventProcessor {
         }
     }
 
-    private static final MethodHandle getMethodHandle(final Method method) {
+    @SuppressWarnings("unchecked")
+    private Class<T> getGenericTypeClass() {
+        try {
+            String className = ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0].getTypeName();
+            Class<?> clazz = Class.forName(className);
+            return (Class<T>) clazz;
+        } catch (Exception e) {
+            throw new IllegalStateException("Class is not parametrized with generic type!!! Please use extends <> ");
+        }
+    }
+
+    private final MethodHandle getMethodHandle(final Method method) {
         try {
             return  MethodHandles.lookup().findVirtual(
-                    EventProcessor.class,
+                    getGenericTypeClass(),
                     method.getName(),
                     MethodType.methodType(void.class, method.getParameterTypes()[0]));
         } catch (NoSuchMethodException|IllegalAccessException e) {
@@ -77,7 +77,7 @@ public class EventProcessor {
         }
     }
 
-    private static class HandlerMethodMapping<T extends Event> {
+    private class HandlerMethodMapping<T extends Event> {
 
         private final Class<T> clazz;
         private final MethodHandle methodHandle;
